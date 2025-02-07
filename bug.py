@@ -1,9 +1,6 @@
-import base64
-import hashlib
 import botocore.session
 from os import environ
-# Create a session using botocore
-session = botocore.session.get_session()
+import s3fs
 
 credentials = {
     'aws_access_key_id': environ['AWS_ACCESS_KEY_ID'],
@@ -16,24 +13,19 @@ bucket_name = 'test-ceph-bucket'
 object_key = 'object'
 file_path = 'file.txt'
 
-s3_client = session.create_client(
-    's3',
-    aws_access_key_id=credentials['aws_access_key_id'],
-    aws_secret_access_key=credentials['aws_secret_access_key'],
-    aws_session_token=credentials.get('aws_session_token'),  # Optional
-    endpoint_url="https://s3.be.du.cesnet.cz"  # Custom S3 endpoint
-)
 
-
-def calculate_sha256(file_path):
-    hash_func = hashlib.new("sha256")
-    with open(file_path, 'rb') as file_data:
-        for chunk in iter(lambda: file_data.read(4096), b""):
-            hash_func.update(chunk)
-    return base64.b64encode(hash_func.digest()).decode('utf-8')
 
 # Upload the object to the S3 bucket
-def failing_call():
+def failing_botocore_call():
+    session = botocore.session.get_session()
+    s3_client = session.create_client(
+        's3',
+        aws_access_key_id=credentials['aws_access_key_id'],
+        aws_secret_access_key=credentials['aws_secret_access_key'],
+        aws_session_token=credentials.get('aws_session_token'),  # Optional
+        endpoint_url="https://s3.be.du.cesnet.cz"  # Custom S3 endpoint
+    )
+
     try:
         with open(file_path, 'rb') as file_data:
             s3_client.put_object(
@@ -46,7 +38,20 @@ def failing_call():
         print(f"An error occurred: {e}")
 
 
+def failing_s3fs_call():
+    fs = s3fs.S3FileSystem(
+        key=credentials['aws_access_key_id'],
+        secret=credentials['aws_secret_access_key'],
+        client_kwargs={'endpoint_url': "https://s3.be.du.cesnet.cz"},
+    )
+
+    with open(file_path, 'rb') as local_file:
+        with fs.open(f'{bucket_name}/{file_path}', 'wb') as s3_file:
+            s3_file.write(local_file.read())
+
+
 
 if __name__ == '__main__':
-    failing_call()
+    failing_botocore_call()
+    failing_s3fs_call() # The method above is an approximation of what is called within s3fs
 
